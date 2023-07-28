@@ -109,7 +109,8 @@ def main(unused_argv):
   else:
     postprocess_fn = lambda z: z
 
-  state = checkpoints.restore_checkpoint(config.checkpoint_dir, state)
+  # import pdb; pdb.set_trace()
+  state = checkpoints.restore_checkpoint(config.checkpoint_dir, state, prefix='selected')
   step = int(state.step)
   print(f'Rendering checkpoint at step {step}.')
 

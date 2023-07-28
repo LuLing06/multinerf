@@ -575,7 +575,7 @@ class LLFF(Dataset):
       factor = config.factor
     else:
       factor = 1
-
+    
     # Copy COLMAP data to local disk for faster loading.
     colmap_dir = os.path.join(self.data_dir, 'sparse/0/')
 

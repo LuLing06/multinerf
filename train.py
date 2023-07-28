@@ -34,6 +34,8 @@ import jax
 from jax import random
 import jax.numpy as jnp
 import numpy as np
+import os
+import json
 
 configs.define_common_flags()
 jax.config.parse_flags_with_absl()
@@ -82,6 +84,7 @@ def main(unused_argv):
   if not utils.isdir(config.checkpoint_dir):
     utils.makedirs(config.checkpoint_dir)
   state = checkpoints.restore_checkpoint(config.checkpoint_dir, state)
+  # import pdb; pdb.set_trace()
   # Resume training at the step of the last checkpoint.
   init_step = state.step + 1
   state = flax.jax_utils.replicate(state)
@@ -106,6 +109,28 @@ def main(unused_argv):
     num_steps = config.early_exit_steps
   else:
     num_steps = config.max_steps
+    
+  
+  # best_psnr = -1
+  # best_step = 0
+  
+  # import pdb; pdb.set_trace()
+  directory_path = config.checkpoint_dir
+  file_name = 'best_step.json'
+  file_path = os.path.join(directory_path, file_name)
+    # Function to get the values from JSON file or set default values
+  # get the best_psnr and best_step from the json file
+  if os.path.exists(file_path):
+      with open(file_path, "r") as json_file:
+          data = json.load(json_file)
+      best_psnr = data['best_psnr']
+      best_step = data['best_step']
+  else:
+      best_psnr = -1
+      best_step = 0
+
+  
+  
   for step, batch in zip(range(init_step, num_steps + 1), pdataset):
 
     if reset_stats and (jax.host_id() == 0):
@@ -211,7 +236,7 @@ def main(unused_argv):
 
         # Reset everything we are tracking between summarizations.
         reset_stats = True
-
+      
       if step == 1 or step % config.checkpoint_every == 0:
         state_to_save = jax.device_get(
             flax.jax_utils.unreplicate(state))
@@ -239,13 +264,50 @@ def main(unused_argv):
         print(f'Eval {step}: {eval_time:0.3f}s., {rays_per_sec:0.0f} rays/sec')
 
         metric_start_time = time.time()
+        # import pdb; pdb.set_trace()
+        
         metric = metric_harness(
             postprocess_fn(rendering['rgb']), postprocess_fn(test_case.rgb))
         print(f'Metrics computed in {(time.time() - metric_start_time):0.3f}s')
+        
+        # import pdb; pdb.set_trace()
+        if best_psnr < metric['psnr']:
+          best_step = step
+          best_psnr = metric['psnr']
+          
+          state_to_save = jax.device_get(
+            flax.jax_utils.unreplicate(state))
+          checkpoints.save_checkpoint(
+            config.checkpoint_dir, state_to_save, ' ', prefix='selected_step', overwrite = True, keep=100)
+          
+          # print('the best step is {}'.format(best_step))
+          directory_path = config.checkpoint_dir
+          file_name = 'best_step.json'
+          file_path = os.path.join(directory_path, file_name)
+          
+          data_save = {
+            'best_step': best_step,
+            'best_psnr': best_psnr,
+            
+          }
+          
+          data_save_string = json.dumps(data_save,indent=4)
+
+          # Create the directory if it doesn't exist
+          if not os.path.exists(directory_path):
+            os.makedirs(directory_path)
+
+          with open(file_path, 'w') as json_file:
+            json_file.write(data_save_string)
+
+            # checkpoints.save_checkpoint(
+            #   config.checkpoint_dir, state_to_save, int(best_step), prefix='best_', keep=100)
+        
         for name, val in metric.items():
           if not np.isnan(val):
             print(f'{name} = {val:.4f}')
-            summary_writer.scalar('train_metrics/' + name, val, step)
+            # summary_writer.scalar('train_metrics/' + name, val, step)
+            summary_writer.scalar('test_metrics/' + name, val, step)
 
         if config.vis_decimate > 1:
           d = config.vis_decimate

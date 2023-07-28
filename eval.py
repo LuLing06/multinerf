@@ -36,6 +36,8 @@ import jax
 from jax import random
 import jax.numpy as jnp
 import numpy as np
+import os
+import json
 
 configs.define_common_flags()
 jax.config.parse_flags_with_absl()
@@ -65,12 +67,22 @@ def main(unused_argv):
   out_dir = path.join(config.checkpoint_dir,
                       'path_renders' if config.render_path else 'test_preds')
   path_fn = lambda x: path.join(out_dir, x)
+  
+
+  # import pdb; pdb.set_trace()
+
 
   if not config.eval_only_once:
     summary_writer = tensorboard.SummaryWriter(
         path.join(config.checkpoint_dir, 'eval'))
   while True:
-    state = checkpoints.restore_checkpoint(config.checkpoint_dir, state)
+    state = checkpoints.restore_checkpoint(config.checkpoint_dir, state, prefix='selected')
+     # Get the list of files in the folder
+     
+    # file_list = os.listdir(config.checkpoint_dir)
+    # matching_files = [file_name for file_name in file_list if file_name.startswith("best_")]
+    # step = int(matching_files[0].split("_")[1])
+    
     step = int(state.step)
     if step <= last_step:
       print(f'Checkpoint step {step} <= last step {last_step}, sleeping.')
@@ -190,6 +202,8 @@ def main(unused_argv):
     if (not config.eval_only_once) and (jax.host_id() == 0):
       summary_writer.scalar('eval_median_render_time', np.median(render_times),
                             step)
+      
+      # import pdb; pdb.set_trace()
       for name in metrics[0]:
         scores = [m[name] for m in metrics]
         summary_writer.scalar('eval_metrics/' + name, np.mean(scores), step)
@@ -240,6 +254,34 @@ def main(unused_argv):
           np.set_printoptions(threshold=sys.maxsize)
           with utils.open_file(path_fn(f'ray_data_{step}_{i}.txt'), 'w') as f:
             f.write(repr(rays))
+    # import pdb; pdb.set_trace()    
+    psnr_cc_score = [metric_psnr["psnr"] for metric_psnr in metrics_cc]
+    ssim_cc_score = [metric_ssim["ssim"] for metric_ssim in metrics_cc]
+    psnr_cc_mean = np.mean(psnr_cc_score)
+    ssim_cc_mean = np.mean(ssim_cc_score)
+    
+    directory_path = config.checkpoint_dir
+    file_name = 'best_step.json'
+    file_path = os.path.join(directory_path, file_name)
+    
+    data_save = {
+      'best_step': step,
+      'psnr': psnr_cc_mean,
+      'ssim': ssim_cc_mean,
+    }
+    
+    data_save_string = json.dumps(data_save, indent=4)
+    
+
+    # Create the directory if it doesn't exist
+    if not os.path.exists(directory_path):
+      os.makedirs(directory_path)
+
+    with open(file_path, 'w') as json_file:
+      json_file.write(data_save_string)
+  
+
+
 
     # A hack that forces Jax to keep all TPUs alive until every TPU is finished.
     x = jnp.ones([jax.local_device_count()])

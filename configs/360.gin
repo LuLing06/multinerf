@@ -2,6 +2,9 @@ Config.dataset_loader = 'llff'
 Config.near = 0.2
 Config.far = 1e6
 Config.factor = 4
+Config.batch_size = 4384
+Config.render_chunk_size = 4384
+Config.lr_init = 0.0005
 
 Model.raydist_fn = @jnp.reciprocal
 Model.opaque_background = True
@@ -16,4 +19,3 @@ NerfMLP.warp_fn = @coord.contract
 NerfMLP.net_depth = 8
 NerfMLP.net_width = 1024
 NerfMLP.disable_density_normals = True
-
